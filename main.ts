@@ -8,12 +8,7 @@ const input = process.env.MAKEFUN_INPUT_DIR ?? "/input";
 const output = process.env.MAKEFUN_OUTPUT_DIR ?? "/output";
 function parseTask(): Task {
   const path = join(input, "task.json");
-  let text: string;
-  try {
-    text = readFileSync(path, "utf8");
-  } catch {
-    throw new Error(`Missing input file: ${path}`);
-  }
+  let text: string; try { text = readFileSync(path, "utf8"); } catch { throw new Error(`Missing input file: ${path}`); }
   let task: Task;
   try {
     const parsed: unknown = JSON.parse(text);
@@ -43,21 +38,14 @@ function finiteSizeMean(mu: number): number { const shrunk = mu * SIZE_MEAN_SHRI
 const RANK_SEED = 0x9e3779b9;
 
 function readBars(file: string): Bar[] {
-  let text: string;
-  try {
-    text = readFileSync(join(input, file), "utf8");
-  } catch (error) {
-    throw new Error(`Missing or unreadable input file ${join(input, file)}: ${error instanceof Error ? error.message : String(error)}`);
-  }
+  let text: string; try { text = readFileSync(join(input, file), "utf8"); } catch (error) { throw new Error(`Missing or unreadable input file ${join(input, file)}: ${error instanceof Error ? error.message : String(error)}`); }
   const parsed = text.split(/\r?\n/).flatMap((line, index) => {
     if (!line.trim()) return [];
     try {
       const raw = JSON.parse(line) as { t?: unknown; c?: unknown };
       const t = Number(raw.t);
       const c = Number(raw.c);
-      if (!Number.isFinite(t) || !Number.isFinite(c) || c <= 0) {
-        throw new Error(`Invalid price or timestamp in ${join(input, file)} at line ${index + 1}: t must be finite and c must be positive`);
-      }
+      if (!Number.isFinite(t) || !Number.isFinite(c) || c <= 0) throw new Error(`Invalid price or timestamp in ${join(input, file)} at line ${index + 1}: t must be finite and c must be positive`);
       return [{ bar: { t, c }, index }];
     } catch (error) {
       if (error instanceof Error && error.message.startsWith("Invalid price")) throw error;
@@ -71,10 +59,7 @@ function finiteReturns(prices: number[]): number[] {
   const returns: number[] = [];
   let previous: number | undefined;
   for (const price of prices) {
-    if (!Number.isFinite(price) || price <= 0) {
-      previous = undefined;
-      continue;
-    }
+    if (!Number.isFinite(price) || price <= 0) { previous = undefined; continue; }
     if (previous !== undefined) {
       const value = Math.log(price) - Math.log(previous);
       if (Number.isFinite(value)) returns.push(value);
@@ -85,9 +70,7 @@ function finiteReturns(prices: number[]): number[] {
 }
 
 function moments(values: number[]): { mean: number; variance: number } {
-  let count = 0;
-  let mean = 0;
-  let m2 = 0;
+  let count = 0, mean = 0, m2 = 0;
   for (const value of values) {
     if (!Number.isFinite(value)) continue;
     count++;
@@ -96,17 +79,10 @@ function moments(values: number[]): { mean: number; variance: number } {
     m2 += delta * (value - mean);
   }
   const variance = count > 1 ? m2 / (count - 1) : 0;
-  return {
-    mean: Number.isFinite(mean) ? mean : 0,
-    variance: Number.isFinite(variance) && variance >= 0 ? variance : 0,
-  };
+  return { mean: Number.isFinite(mean) ? mean : 0, variance: Number.isFinite(variance) && variance >= 0 ? variance : 0 };
 }
 
-function historicalMoments(prices: number[]): { mean: number; variance: number; returns: number[] } {
-  const returns = finiteReturns(prices);
-  const summary = moments(returns.slice(-480));
-  return { ...summary, returns };
-}
+function historicalMoments(prices: number[]): { mean: number; variance: number; returns: number[] } { const returns = finiteReturns(prices), summary = moments(returns.slice(-480)); return { ...summary, returns }; }
 
 function trailingMean(returns: number[], horizon: number): number {
   const recent = returns.slice(-Math.min(horizon, returns.length));
@@ -159,9 +135,7 @@ function volatilityEstimate(returns: number[], fallback: number): number {
 
 function clamp(x: number, lo: number, hi: number): number { return Math.max(lo, Math.min(hi, x)); }
 function normalCdf(x: number): number {
-  if (Number.isNaN(x)) return 0.5;
-  if (x === Infinity) return 1;
-  if (x === -Infinity) return 0;
+  if (Number.isNaN(x)) return 0.5; if (x === Infinity) return 1; if (x === -Infinity) return 0;
   const sign = x < 0 ? -1 : 1;
   const z = Math.abs(x) / SQRT_TWO;
   const t = 1 / (1 + 0.3275911 * z);
@@ -193,10 +167,7 @@ function rankDistribution(scores: number[][], places: number): number[][] {
   const counts = Array.from({ length: symbolCount }, () => Array(places).fill(0));
   const pairDraws = 6000;
   let seed = RANK_SEED;
-  const rand = () => {
-    seed = (Math.imul(seed ^ (seed >>> 16), 2246822519) + 3266489917) >>> 0;
-    return seed / 4294967296;
-  };
+  const rand = () => (seed = (Math.imul(seed ^ (seed >>> 16), 2246822519) + 3266489917) >>> 0) / 4294967296;
   const recordRanks = (sign: number, z: number[]) => {
     const sample = scores.map(([mu, sd], index) => mu + sd * sign * z[index]);
     const ranked = sample.map((value, index) => [value, index] as const)
@@ -205,21 +176,14 @@ function rankDistribution(scores: number[][], places: number): number[][] {
     ranked.forEach(([, index], place) => { counts[index][place] += 1; });
   };
   for (let draw = 0; draw < pairDraws; draw++) {
-    const z = scores.map(() => {
-      const u = Math.max(rand(), 1e-12);
-      const v = rand();
-      return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
-    });
+    const z = scores.map(() => { const u = Math.max(rand(), 1e-12), v = rand(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); });
     recordRanks(1, z);
     recordRanks(-1, z);
   }
   return counts.map((row) => {
     const total = row.reduce((sum, value) => sum + value, 0);
     if (total <= 0 || !Number.isFinite(total)) return row.map(() => 1 / places);
-    return row.map((value) => {
-      const probability = value / total;
-      return Number.isFinite(probability) && probability >= 0 ? probability : 0;
-    });
+    return row.map((value) => { const probability = value / total; return Number.isFinite(probability) && probability >= 0 ? probability : 0; });
   });
 }
 
@@ -238,31 +202,11 @@ const days = task.window.days.map((windowDay) => {
     .sort((left, right) => right.mu - left.mu || left.symbol.localeCompare(right.symbol))
     .slice(0, places);
   const order = ordered.map((forecast) => forecast.symbol);
-  const probabilities = forecasts.flatMap((forecast, symbolIndex) =>
-    rank[symbolIndex].map((probability, placeIndex) => ({
-      symbol: forecast.symbol,
-      place: placeIndex + 1,
-      p: probability,
-    })),
-  );
-  const sizes = forecasts.flatMap((forecast) =>
-    binProbabilities(finiteSizeMean(forecast.mu), forecast.sigma).map((probability, binIndex) => ({
-      symbol: forecast.symbol,
-      bin: binIndex,
-      p: probability,
-    })),
-  );
+  const probabilities = forecasts.flatMap((forecast, symbolIndex) => rank[symbolIndex].map((p, placeIndex) => ({ symbol: forecast.symbol, place: placeIndex + 1, p })));
+  const sizes = forecasts.flatMap((forecast) => binProbabilities(finiteSizeMean(forecast.mu), forecast.sigma).map((p, binIndex) => ({ symbol: forecast.symbol, bin: binIndex, p })));
   return { date: windowDay.date, probabilities, order, sizes };
 });
 
 const outputPath = join(output, task.output);
-try {
-  mkdirSync(output, { recursive: true });
-} catch (error) {
-  throw new Error(`Output directory unavailable ${output}: ${error instanceof Error ? error.message : String(error)}`);
-}
-try {
-  writeFileSync(outputPath, JSON.stringify({ days }));
-} catch (error) {
-  throw new Error(`Failed to write forecast file ${outputPath}: ${error instanceof Error ? error.message : String(error)}`);
-}
+try { mkdirSync(output, { recursive: true }); } catch (error) { throw new Error(`Output directory unavailable ${output}: ${error instanceof Error ? error.message : String(error)}`); }
+try { writeFileSync(outputPath, JSON.stringify({ days })); } catch (error) { throw new Error(`Failed to write forecast file ${outputPath}: ${error instanceof Error ? error.message : String(error)}`); }
