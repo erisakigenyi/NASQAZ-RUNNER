@@ -207,6 +207,28 @@ const days = task.window.days.map((windowDay) => {
   return { date: windowDay.date, probabilities, order, sizes };
 });
 
+function validateForecast(value: { days: { date: string; probabilities: { symbol: string; place: number; p: number }[]; order: string[]; sizes: { symbol: string; bin: number; p: number }[] }[] }): void {
+  const allowed = new Set(symbols);
+  if (!Array.isArray(value.days) || value.days.length !== task.window.days.length) throw new Error("Forecast validation failed: wrong day count");
+  for (const day of value.days) {
+    if (typeof day.date !== "string" || day.order.length !== places) throw new Error("Forecast validation failed: invalid date or order length");
+    if (new Set(day.order).size !== places || day.order.some((symbol) => !allowed.has(symbol))) throw new Error("Forecast validation failed: order symbols are invalid or duplicated");
+    for (const place of Array.from({ length: places }, (_, index) => index + 1)) {
+      const rows = day.probabilities.filter((row) => row.place === place);
+      if (rows.length !== symbols.length || rows.some((row) => !allowed.has(row.symbol) || !Number.isFinite(row.p) || row.p < 0)) throw new Error("Forecast validation failed: invalid place probabilities");
+      const total = rows.reduce((sum, row) => sum + row.p, 0);
+      if (!Number.isFinite(total) || Math.abs(total - 1) > 1e-9) throw new Error("Forecast validation failed: place probabilities are not normalized");
+    }
+    for (const symbol of symbols) {
+      const rows = day.sizes.filter((row) => row.symbol === symbol);
+      if (rows.length !== edges.length + 1 || rows.some((row) => !Number.isInteger(row.bin) || !Number.isFinite(row.p) || row.p < 0)) throw new Error("Forecast validation failed: invalid size probabilities");
+      const total = rows.reduce((sum, row) => sum + row.p, 0);
+      if (!Number.isFinite(total) || Math.abs(total - 1) > 1e-9) throw new Error("Forecast validation failed: size probabilities are not normalized");
+    }
+  }
+}
+
 const outputPath = join(output, task.output);
+validateForecast({ days });
 try { mkdirSync(output, { recursive: true }); } catch (error) { throw new Error(`Output directory unavailable ${output}: ${error instanceof Error ? error.message : String(error)}`); }
 try { writeFileSync(outputPath, JSON.stringify({ days })); } catch (error) { throw new Error(`Failed to write forecast file ${outputPath}: ${error instanceof Error ? error.message : String(error)}`); }
